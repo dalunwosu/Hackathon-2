@@ -188,6 +188,14 @@ def populate_tests():
         cursor.execute(query)
     connection.commit()
 
+def get_country():
+    name = input("Input your Country of choice: ")
+    query = f"SELECT c.name AS country_name, cn.name AS continent_name, c.population, ca.New AS new_cases, ca.Active AS active_cases, ca.Critical AS critical_cases, ca.Recovered AS recovered_cases, ca.Total AS total_cases, d.New AS new_deaths, d.Total AS total_deaths, t.total AS total_tests, c.date_now, c.time_now FROM Countries c JOIN Continents cn ON c.continent_id = cn.id JOIN Cases ca ON c.id = ca.country_id JOIN Deaths d ON c.id = d.country_id JOIN Tests t ON c.id = t.country_id where c.name = '{name}';"
+    cursor.execute(query)
+    results = cursor.fetchall()
+    print(results)
+
+
 def update_table():
     query = f"TRUNCATE TABLE continents RESTART IDENTITY CASCADE"
     cursor.execute(query)
@@ -197,5 +205,244 @@ def update_table():
     populate_cases()
     populate_deaths()
     populate_tests()
+    get_country()
+
 
 update_table()
+
+
+
+# GRAPHICAL REPRESENTATION
+def case_table():
+    continent_query = "SELECT cnt.name as continent_name, SUM(ca.Total) AS total_cases FROM Countries c \
+                       JOIN Continents cnt ON c.continent_id = cnt.id \
+                       JOIN Cases ca ON c.id = ca.country_id \
+                       GROUP BY cnt.name"
+    continent_df = pd.read_sql(continent_query, connection)
+
+    plt.bar(continent_df['continent_name'], continent_df['total_cases'])
+    plt.title('COVID Cases by Continent')
+    plt.xlabel('Continent')
+    plt.ylabel('Total Cases')
+    plt.show()
+
+
+# Function to plot bar chart of total cases by country
+def plot_cases_by_country(connection):
+    query = '''
+        SELECT c.name AS country, SUM(cases.total) AS total_cases
+        FROM countries c
+        JOIN cases ON c.id = cases.country_id
+        GROUP BY c.name
+        ORDER BY total_cases DESC
+        LIMIT 10
+    '''
+    df = pd.read_sql_query(query, connection)
+    plt.bar(df['country'], df['total_cases'], color='cornflowerblue')
+    plt.title('Total Cases by Country (Top 10)')
+    plt.xlabel('Country')
+    plt.xticks(rotation=45)
+    plt.ylabel('Total Cases')
+    plt.show()
+
+# Function to plot scatter plot of deaths vs cases by continent
+def plot_deaths_vs_cases_by_continent(connection):
+    query = '''
+        SELECT cont.name AS continent, SUM(cases.total) AS total_cases, SUM(deaths.total) AS total_deaths
+        FROM continents cont
+        JOIN countries c ON cont.id = c.continent_id
+        JOIN cases ON c.id = cases.country_id
+        JOIN deaths ON c.id = deaths.country_id
+        GROUP BY cont.name
+    '''
+    df = pd.read_sql_query(query, connection)
+    plt.scatter(df['total_cases'], df['total_deaths'], s=150, alpha=0.7, color='tomato')
+    for i, txt in enumerate(df['continent']):
+        plt.annotate(txt, (df['total_cases'][i], df['total_deaths'][i]))
+    plt.title('Deaths vs Cases by Continent')
+    plt.xlabel('Total Cases')
+    plt.ylabel('Total Deaths')
+    plt.show()
+
+# Function to plot pie chart of active cases by continent
+def plot_active_cases_by_continent(connection):
+    query = '''
+        SELECT cont.name AS continent, SUM(cases.active) AS active_cases
+        FROM continents cont
+        JOIN countries c ON cont.id = c.continent_id
+        JOIN cases ON c.id = cases.country_id
+        GROUP BY cont.name
+    '''
+    df = pd.read_sql_query(query, connection)
+    plt.pie(df['active_cases'], labels=df['continent'], autopct='%1.1f%%', startangle=90, colors=['gold', 'lightgreen', 'pink', 'lightblue'])
+    plt.title('Active Cases by Continent')
+    plt.axis('equal')
+    plt.show()
+
+# Function to plot line graph of new cases by day for a country
+def plot_new_cases_by_day(connection, country_name):
+    query = f'''
+        SELECT date_now AS day, New AS new_cases
+        FROM countries c
+        JOIN cases ON c.id = cases.country_id
+        WHERE c.name = '{country_name}'
+        ORDER BY day
+    '''
+    df = pd.read_sql_query(query, connection)
+    plt.plot(df['day'], df['new_cases'], color='purple')
+    plt.title(f'New Cases by Day for {country_name}')
+    plt.xlabel('Day')
+    plt.xticks(rotation=45)
+    plt.ylabel('New Cases')
+    plt.show()
+
+def scatterplot_new_cases_deaths_by_country(connection):
+    query = """
+    SELECT c.name AS country_name, Cases.New AS new_cases, deaths.new AS new_deaths
+    FROM Countries c
+    JOIN Cases ON c.id = Cases.country_id
+    JOIN deaths ON c.id = deaths.country_id
+    """
+    df = pd.read_sql_query(query, connection)
+
+    plt.scatter(df['new_cases'], df['new_deaths'], alpha=0.5)
+    plt.xlabel('New Cases')
+    plt.ylabel('New Deaths')
+    plt.title('New Cases vs New Deaths by Country')
+    plt.show()
+
+def barplot_total_tests_per_continent(connection):
+    query = """
+    SELECT c.name AS continent_name, SUM(tests.total) AS total_tests
+    FROM Continents c
+    JOIN Countries ON c.id = Countries.continent_id
+    JOIN tests ON Countries.id = tests.country_id
+    GROUP BY c.name
+    """
+    df = pd.read_sql_query(query, connection)
+
+    plt.bar(df['continent_name'], df['total_tests'], color=['green', 'red', 'blue', 'purple', 'orange', 'brown'])
+    plt.xticks(rotation=45)
+    plt.xlabel('Continent')
+    plt.ylabel('Total Tests')
+    plt.title('Total COVID-19 Tests per Continent')
+    plt.show()
+
+def piechart_active_cases_by_continent(connection):
+    query = """
+    SELECT c.name AS continent_name, SUM(Cases.Active) AS active_cases
+    FROM Continents c
+    JOIN Countries ON c.id = Countries.continent_id
+    JOIN Cases ON Countries.id = Cases.country_id
+    GROUP BY c.name
+    """
+    df = pd.read_sql_query(query, connection)
+
+    plt.pie(df['active_cases'], labels=df['continent_name'], autopct='%1.1f%%', startangle=90)
+    plt.axis('equal')
+    plt.title('Active COVID-19 Cases by Continent')
+    plt.show()
+
+def lineplot_new_cases_over_time_by_country(connection, country_name):
+    query = """
+    SELECT countries.date_now, Cases.New AS new_cases
+    FROM Cases
+    JOIN Countries ON Cases.country_id = Countries.id
+    WHERE Countries.name = '{}'
+    """.format(country_name)
+    df = pd.read_sql_query(query, connection)
+
+    plt.plot(df['date_now'], df['new_cases'])
+    plt.xticks(rotation=45)
+    plt.xlabel('Date')
+    plt.ylabel('New Cases')
+    plt.title('New COVID-19 Cases over Time for {}'.format(country_name))
+    plt.show()
+
+def deaths_by_country(connection):
+    """
+    Plots a bar chart of the total deaths by country
+    
+    Parameters:
+    connection: psycopg2.extensions.connection
+                A psycopg2 connection to a PostgreSQL database
+    
+    Returns:
+    None
+    """
+    # Create a cursor object
+    cur = connection.cursor()
+    
+    # Execute the query to get total deaths by country
+    cur.execute("""
+                SELECT c.name, SUM(d.total) as total_deaths
+                FROM countries c
+                JOIN deaths d ON c.id = d.country_id
+                GROUP BY c.name
+                ORDER BY total_deaths DESC
+                LIMIT 10;
+                """)
+    
+    # Fetch the results
+    results = cur.fetchall()
+    
+    # Close the cursor
+    cur.close()
+    
+    # Extract the country names and total deaths into separate lists
+    countries = [result[0] for result in results]
+    total_deaths = [result[1] for result in results]
+    
+    # Plot the bar chart
+    plt.bar(countries, total_deaths, color='red')
+    plt.title("Total Deaths by Country")
+    plt.xlabel("Country")
+    plt.ylabel("Total Deaths")
+    plt.xticks(rotation=90)
+    plt.show()
+
+def stackedbarplot_total_cases_deaths_by_country(connection):
+    query = """
+    SELECT
+        countries.name AS name,
+        SUM(cases.total) AS total_cases,
+        SUM(deaths.total) AS total_deaths
+    FROM
+        cases
+        JOIN countries ON cases.country_id = countries.id
+    GROUP BY
+        countries.name
+    ORDER BY
+        total_cases DESC
+    """
+    df = pd.read_sql(query, connection)
+    
+    fig, ax = plt.subplots(figsize=(20, 10))
+
+    totals = df['total'].values.ravel()
+    
+    ax.bar(df['name'], totals, label='Total Cases')
+    ax.bar(df['name'], df['total_deaths'], bottom=totals, label='Total Deaths')
+
+    ax.set_ylabel('Cases')
+    ax.set_title('Total Cases and Deaths by Country')
+    ax.legend()
+
+    plt.xticks(rotation=90)
+
+    plt.show()
+
+country_name = input("Give your desired country: ")
+
+case_table()
+plot_cases_by_country(connection)
+plot_deaths_vs_cases_by_continent(connection)
+plot_active_cases_by_continent(connection)
+plot_new_cases_by_day(connection, country_name)
+scatterplot_new_cases_deaths_by_country(connection)
+barplot_total_tests_per_continent(connection)
+piechart_active_cases_by_continent(connection)
+lineplot_new_cases_over_time_by_country(connection,country_name)
+deaths_by_country(connection)
+stackedbarplot_total_cases_deaths_by_country(connection)
+
